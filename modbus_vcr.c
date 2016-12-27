@@ -287,7 +287,7 @@ static int modbus_read(struct modbus_connection *connection, struct packet_objec
 	if(len < 0){ // going out on a limb here, changing from <= 0 to <0 KRW
 		if (errno == EAGAIN){
 			return len; // should be 0 in this case
-		}d
+		}
 		printf("Error encountered on read(), error is %d\n", errno);
 		return -E_INVALID;
 	}
@@ -366,7 +366,6 @@ static void modbus_initialize_po(struct packet_object *po, u_char *p_data, size_
    po->L4.proto = NL_TYPE_TCP;
 
 }
-d
 
 static void modbus_wipe_connection(struct modbus_connection *connection)
 {
