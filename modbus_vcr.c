@@ -25,8 +25,8 @@
 
 
 #define BREAK_ON_ERROR(x,y,z) do {  \
-   if (x == -EINVALID ) {            \
-	 printf("BREAK_ON_ERROR: x is %d, -EINVALID is %d", x, -EINVALID); \
+   if (x == -E_INVALID ) {            \
+	 printf("BREAK_ON_ERROR: x is %d, -E_INVALID is %d", x, -E_INVALID); \
      modbus_wipe_connection(y);      \
      SAFE_FREE(z.DATA.data);       \
      SAFE_FREE(z.DATA.disp_data);  \
@@ -145,7 +145,7 @@ static void modbus_handle_request(struct packet_object *po);
 
 
 // placeholder for parsing modbus requests
-// we're doing this a crappy way, just storing the
+// we're doing this a crappy way, just stodring the
 // request as an array of bytes.
 // note modbus request may contain null bytes all over the place...
 struct modbus_request {
@@ -222,7 +222,7 @@ static int modbus_get_peer(struct modbus_connection *connection)
 	void *ident= NULL;
 	int i;
 
-	memcpy(&po.L3.src, &connection->ip[MODBUS_CLIENT], sizeof(struct ip_addr));
+	memcpy(&po.L3.src, &connection->ip[MODBUS_CLIENT], sdizeof(struct ip_addr));
 	po.L4.src = connection->port[MODBUS_CLIENT];
 	po.L4.dst = connection->port[MODBUS_SERVER]; 
 
@@ -235,7 +235,7 @@ static int modbus_get_peer(struct modbus_connection *connection)
 #endif
 
 	/* Wait for sniffing thread */
-	for (i=0; i<5 && session_get_and_del(&s, ident, MODBUS_IDENT_LEN)!=ESUCCESS; i++)
+	for (i=0; i<5 && session_get_and_del(&s, ident, MODBUS_IDENT_LEN)!=E_SUCCESS; i++)
 #ifndef OS_WINDOWS
 	nanosleep(&tm, NULL);
 #else	
@@ -244,7 +244,7 @@ static int modbus_get_peer(struct modbus_connection *connection)
 
 	if (i==5) { // RETRY
 		SAFE_FREE(ident);
-		return -EINVALID;
+		return -E_INVALID;
 	}
 
 	memcpy(&connection->ip[MODBUS_SERVER], s->data, sizeof(struct ip_addr));
@@ -261,16 +261,16 @@ static int modbus_get_peer(struct modbus_connection *connection)
 #endif
 
 	
-	return ESUCCESS;
+	return E_SUCCESS;
 
 }
 
 
 static int modbus_sync_conn(struct modbus_connection *connection){
-	if(modbus_get_peer(connection) != ESUCCESS)
-		return -EINVALID;
+	if(modbus_get_peer(connection) != E_SUCCESS)
+		return -E_INVALID;
 	set_blocking(connection->fd, 0);
-	return ESUCCESS;
+	return E_SUCCESS;
 }
 
 static int modbus_read(struct modbus_connection *connection, struct packet_object *po)
@@ -289,7 +289,7 @@ static int modbus_read(struct modbus_connection *connection, struct packet_objec
 			return len; // should be 0 in this case
 		}
 		printf("Error encountered on read(), error is %d\n", errno);
-		return -EINVALID;
+		return -E_INVALID;
 	}
 	return len;	
 }
@@ -310,15 +310,15 @@ static void modbus_parse_packet(struct modbus_connection *connection, int direct
 	gettimeofday(&po->ts, NULL);
 
 	switch(ip_addr_is_local(&PACKET->L3.src, NULL)) {
-		case ESUCCESS:
+		case E_SUCCESS:
 			PACKET->PASSIVE.flags &= ~FP_HOST_NONLOCAL;
 			PACKET->PASSIVE.flags |= FP_HOST_LOCAL;
 			break;
-		case -ENOTFOUND:
+		case -E_NOTFOUND:
 			PACKET->PASSIVE.flags &= ~FP_HOST_LOCAL;
 			PACKET->PASSIVE.flags |= FP_HOST_NONLOCAL;
 			break;
-		case -EINVALID:
+		case -E_INVALID:
 			PACKET->PASSIVE.flags = FP_UNKNOWN;
 			break;
 	}
@@ -367,7 +367,6 @@ static void modbus_initialize_po(struct packet_object *po, u_char *p_data, size_
 
 }
 
-
 static void modbus_wipe_connection(struct modbus_connection *connection)
 {
 	DEBUG_MSG("SSLStrip: http_wipe_connection");
@@ -398,7 +397,7 @@ EC_THREAD_FUNC(modbus_child_thread){
 	ec_thread_init();
 	
 	/* Get peer, set to non-blocking */
-	if (modbus_sync_conn(connection) == -EINVALID){
+	if (modbus_sync_conn(connection) == -E_INVALID){
 		DEBUG_MSG("Modbus_vcr: Could not get peer!");
 		printf("Modbus_vcr: Could not get peer!\n");
 		if (connection->fd != -1)
@@ -486,7 +485,7 @@ int plugin_load(void *handle){
 
 static int modbus_vcr_init(void *modbus_vcr){
 	printf("modbus_vcr_init() called\n");
-	/*if (modbus_bind_wrapper() != ESUCCESS) {
+	/*if (modbus_bind_wrapper() != E_SUCCESS) {
 		ERROR_MSG("Modbus_vcr: Could not set up modbus redirect\n");
 		return PLUGIN_FINISHED;
 	}*/
@@ -502,7 +501,7 @@ static int modbus_vcr_init(void *modbus_vcr){
 
 static int modbus_vcr_fini(void *modbus_vcr){
 	DEBUG_MSG("Modbus_vcr: Removing redirect (warning, memory leaks exist due to global storage)\n");
-	if (modbus_remove_redirect(bind_port) == -EFATAL) {
+	if (modbus_remove_redirect(bind_port) == -E_FATAL) {
 		ERROR_MSG("Unable to remove HTTP redirect, please do so manually");
 	}
 	pthread_t pid = ec_thread_getpid("modbus_accept_thread");
@@ -957,9 +956,9 @@ static int modbus_bind_wrapper(void){
 	listen(main_fd, 100);
 	USER_MSG("modbus_vcr plugin: bind 502 on %d\n, bind_port", bind_port);
 	printf("about to set up redirect\n");
-	if (modbus_insert_redirect(bind_port) != ESUCCESS)
-		return -EFATAL;
-	return ESUCCESS;
+	if (modbus_insert_redirect(bind_port) != E_SUCCESS)
+		return -E_FATAL;
+	return E_SUCCESS;
 }
 
 static int modbus_insert_redirect(u_int16 dport){
@@ -970,7 +969,7 @@ static int modbus_insert_redirect(u_int16 dport){
 	printf("modbus_insert_redirect() called with %d\n", dport);
 	if (GBL_CONF->redir_command_on == NULL){
 		printf("modbus_insert_redirect() no redirect command found!\n");
-		return -EFATAL;
+		return -E_FATAL;
 	}
 		
 	snprintf(asc_dport, 16, "%u", dport);
@@ -993,17 +992,17 @@ static int modbus_insert_redirect(u_int16 dport){
 	switch(fork()){
 		case 0:
 			execvp(param[0], param);
-			exit(EINVALID);
+			exit(E_INVALID);
 		case -1:
 			SAFE_FREE(param);
-			return -EINVALID;
+			return -E_INVALID;
 		default:
 			SAFE_FREE(param);
 			wait(&ret_val);
-			if (ret_val == EINVALID)
-				return -EINVALID;
+			if (ret_val == E_INVALID)
+				return -E_INVALID;
 	}
-	return ESUCCESS;
+	return E_SUCCESS;
 }
 
 static int modbus_remove_redirect(u_int16 dport){
@@ -1012,7 +1011,7 @@ static int modbus_remove_redirect(u_int16 dport){
 	char *command, *p;
 	char **param = NULL;
 	if (GBL_CONF->redir_command_on == NULL)
-		return -EFATAL;
+		return -E_FATAL;
 	snprintf(asc_dport, 16, "%u", dport);
 	command = strdup(GBL_CONF->redir_command_off);
 	str_replace(&command, "%iface", GBL_OPTIONS->iface);
@@ -1032,16 +1031,15 @@ static int modbus_remove_redirect(u_int16 dport){
 	switch(fork()){
 		case 0:
 			execvp(param[0], param);
-			exit(EINVALID);
+			exit(E_INVALID);
 		case -1:
 			SAFE_FREE(param);
-			return -EINVALID;
+			return -E_INVALID;
 		default:
 			SAFE_FREE(param);
 			wait(&ret_val);
-			if (ret_val == EINVALID)
-				return -EINVALID;
+			if (ret_val == E_INVALID)
+				return -E_INVALID;
 	}
-	return ESUCCESS;
+	return E_SUCCESS;
 }
-
